@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <meta 
+    name="viewport" 
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+  >
+
+  <title>Live Attendance Scanner</title>
+
+  <!-- QR decoder library -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f4f7fb;
+      color: #222;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 14px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 560px;
+      background: #ffffff;
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 25px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 16px;
+    }
+
+    #status {
+      min-height: 48px;
+      padding: 12px;
+      border-radius: 12px;
+      margin: 14px 0;
+      font-weight: bold;
+      word-break: break-word;
+      background: #e9f2ff;
+      color: #004085;
+      border: 1px solid #b8daff;
+    }
+
+    .success {
+      background: #d4edda !important;
+      color: #155724 !important;
+      border-color: #c3e6cb !important;
+    }
+
+    .error {
+      background: #f8d7da !important;
+      color: #721c24 !important;
+      border-color: #f5c6cb !important;
+    }
+
+    .warning {
+      background: #fff3cd !important;
+      color: #856404 !important;
+      border-color: #ffeeba !important;
+    }
+
+    .info {
+      background: #e9f2ff !important;
+      color: #004085 !important;
+      border-color: #b8daff !important;
+    }
+
+    .camera-box {
+      width: 100%;
+      max-width: 440px;
+      margin: 14px auto;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #000;
+      position: relative;
+      display: none;
+    }
+
+    video {
+      width: 100%;
+      display: block;
+      background: #000;
+    }
+
+    canvas {
+      display: none;
+    }
+
+    .scan-frame {
+      position: absolute;
+      inset: 50%;
+      width: 230px;
+      height: 230px;
+      transform: translate(-50%, -50%);
+      border: 3px solid #00ff88;
+      border-radius: 18px;
+      box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35);
+      pointer-events: none;
+    }
+
+    select,
+    input {
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      font-size: 15px;
+    }
+
+    .btn {
+      width: 100%;
+      border: none;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 8px 0;
+      color: #fff;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .blue {
+      background: #007bff;
+    }
+
+    .green {
+      background: #28a745;
+    }
+
+    .red {
+      background: #dc3545;
+    }
+
+    .gray {
+      background: #6c757d;
+    }
+
+    .note {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.5;
+      margin: 10px 0;
+    }
+
+    .manual-box {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid #e5e5e5;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        align-items: flex-start;
+        padding: 10px;
+      }
+
+      .app {
+        padding: 16px;
+        border-radius: 15px;
+      }
+
+      h1 {
+        font-size: 22px;
+      }
+
+      .btn {
+        font-size: 15px;
+      }
+
+      .scan-frame {
+        width: 200px;
+        height: 200px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <h1>Attendance Scanner</h1>
+    <div class="subtitle">Live QR scanner for event attendance</div>
+
+    <div id="status" class="info">
+      Scanner loading...
+    </div>
+
+    <button class="btn gray" onclick="detectCameras()">
+      🔄 Detect Camera
+    </button>
+
+    <select id="cameraSelect">
+      <option value="">No camera selected</option>
+    </select>
+
+    <button id="startBtn" class="btn blue" onclick="startScanner()">
+      🎥 Start Live Camera
+    </button>
+
+    <button id="stopBtn" class="btn red" onclick="stopScanner()" style="display:none;">
+      ⛔ Stop Camera
+    </button>
+
+    <div id="cameraBox" class="camera-box">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="scan-frame"></div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="note">
+      This page must be opened using HTTPS for live camera to work.
+    </div>
+
+    <div class="manual-box">
+      <input type="text" id="manualInput" placeholder="Manual email / QR value">
+
+      <button class="btn green" onclick="submitManual()">
+        ✅ Submit Manually
+      </button>
+    </div>
+  </div>
+
+  <script>
+    /****************************************************
+     * IMPORTANT:
+     * Replace this with your Apps Script Web App /exec URL
+     ****************************************************/
+
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzvgqo0LNvWFQdpkJiBHmd9wSjN7D-Tw-fnRxgNFcUtdS-fHWWClYLZhmgxnbqBd2Dh/exec";
+
+
+    /****************************************************
+     * GLOBAL VARIABLES
+     ****************************************************/
+
+    let cameras = [];
+    let currentStream = null;
+    let scanning = false;
+    let saving = false;
+    let scanLoopId = null;
+
+    const statusEl = document.getElementById("status");
+    const cameraSelect = document.getElementById("cameraSelect");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const cameraBox = document.getElementById("cameraBox");
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const manualInput = document.getElementById("manualInput");
+    const canvasContext = canvas.getContext("2d", { willReadFrequently: true });
+
+
+    /****************************************************
+     * PAGE LOAD CHECKS
+     ****************************************************/
+
+    window.addEventListener("load", function () {
+      if (typeof jsQR === "undefined") {
+        setStatus("QR scanner library failed to load. Please check internet connection.", "error");
+        return;
+      }
+
+      if (!window.isSecureContext) {
+        setStatus("Camera requires HTTPS. Host this scanner page on GitHub Pages, Cloudflare Pages, Netlify, or your HTTPS website.", "error");
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus("This browser does not support live camera access.", "error");
+        return;
+      }
+
+      setStatus("Ready. Tap Detect Camera first.", "info");
+    });
+
+
+    /****************************************************
+     * UI HELPER
+     ****************************************************/
+
+    function setStatus(message, type) {
+      statusEl.textContent = message;
+      statusEl.className = type || "info";
+    }
+
+
+    /****************************************************
+     * DETECT CAMERAS
+     ****************************************************/
+
+    async function detectCameras() {
+      try {
+        setStatus("Requesting camera permission...", "info");
+
+        const permissionStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+
+        permissionStream.getTracks().forEach(function (track) {
+          track.stop();
+        });
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+
+        cameras = devices.filter(function (device) {
+          return device.kind === "videoinput";
+        });
+
+        cameraSelect.innerHTML = "";
+
+        if (!cameras.length) {
+          cameraSelect.innerHTML = '<option value="">No camera found</option>';
+          setStatus("No camera found on this device.", "error");
+          return;
+        }
+
+        let selectedIndex = 0;
+
+        cameras.forEach(function (camera, index) {
+          const option = document.createElement("option");
+          option.value = camera.deviceId;
+
+          const label = camera.label || "Camera " + (index + 1);
+          option.textContent = label;
+
+          const lowerLabel = label.toLowerCase();
+
+          if (
+            lowerLabel.includes("back") ||
+            lowerLabel.includes("rear") ||
+            lowerLabel.includes("environment")
+          ) {
+            selectedIndex = index;
+          }
+
+          cameraSelect.appendChild(option);
+        });
+
+        cameraSelect.selectedIndex = selectedIndex;
+
+        setStatus("Camera detected. Tap Start Live Camera.", "success");
+
+      } catch (error) {
+        console.error(error);
+
+        if (error.name === "NotAllowedError") {
+          setStatus("Camera permission denied. Please allow camera permission in browser settings.", "error");
+        } else if (error.name === "NotFoundError") {
+          setStatus("No camera device found.", "error");
+        } else if (error.name === "NotReadableError") {
+          setStatus("Camera is already being used by another app. Close camera apps and try again.", "error");
+        } else if (error.name === "OverconstrainedError") {
+          setStatus("Selected camera settings are not supported. Try another browser or device.", "error");
+        } else {
+          setStatus("Camera error: " + error.message, "error");
+        }
+      }
+    }
+
+
+    /****************************************************
+     * START LIVE SCANNER
+     ****************************************************/
+
+    async function startScanner() {
+      if (scanning || saving) return;
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus("Live camera is not supported by this browser.", "error");
+        return;
+      }
+
+      let selectedCameraId = cameraSelect.value;
+
+      if (!selectedCameraId) {
+        await detectCameras();
+        selectedCameraId = cameraSelect.value;
+      }
+
+      if (!selectedCameraId) {
+        setStatus("Please select a camera first.", "warning");
+        return;
+      }
+
+      try {
+        setStatus("Starting live camera...", "info");
+
+        await stopScanner();
+
+        const constraints = {
+          video: {
+            deviceId: {
+              exact: selectedCameraId
+            },
+            width: {
+              ideal: 1280
+            },
+            height: {
+              ideal: 720
+            }
+          },
+          audio: false
+        };
+
+        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        video.srcObject = currentStream;
+
+        await video.play();
+
+        scanning = true;
+
+        cameraBox.style.display = "block";
+        startBtn.style.display = "none";
+        stopBtn.style.display = "block";
+
+        setStatus("Camera running. Point the QR code inside the box.", "info");
+
+        scanLoop();
+
+      } catch (error) {
+        console.error(error);
+
+        await stopScanner();
+
+        if (error.name === "NotAllowedError") {
+          setStatus("Camera permission denied. Please allow camera access.", "error");
+        } else if (error.name === "NotReadableError") {
+          setStatus("Camera is busy. Close other apps using the camera.", "error");
+        } else if (error.name === "OverconstrainedError") {
+          setStatus("This camera failed to start. Try another camera from the list.", "error");
+        } else {
+          setStatus("Could not start camera: " + error.message, "error");
+        }
+      }
+    }
+
+
+    /****************************************************
+     * STOP LIVE SCANNER
+     ****************************************************/
+
+    async function stopScanner() {
+      scanning = false;
+
+      if (scanLoopId) {
+        cancelAnimationFrame(scanLoopId);
+        scanLoopId = null;
+      }
+
+      if (currentStream) {
+        currentStream.getTracks().forEach(function (track) {
+          track.stop();
+        });
+
+        currentStream = null;
+      }
+
+      video.srcObject = null;
+
+      cameraBox.style.display = "none";
+      startBtn.style.display = "block";
+      stopBtn.style.display = "none";
+    }
+
+
+    /****************************************************
+     * QR SCAN LOOP
+     ****************************************************/
+
+    function scanLoop() {
+      if (!scanning || saving) return;
+
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        canvasContext.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+
+        const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "dontInvert"
+        });
+
+        if (qrCode && qrCode.data) {
+          saving = true;
+
+          const scannedValue = String(qrCode.data || "").trim();
+
+          setStatus("QR detected: " + scannedValue, "success");
+
+          stopScanner().then(function () {
+            saveAttendance(scannedValue);
+          });
+
+          return;
+        }
+      }
+
+      scanLoopId = requestAnimationFrame(scanLoop);
+    }
+
+
+    /****************************************************
+     * MANUAL SUBMIT
+     ****************************************************/
+
+    function submitManual() {
+      const value = manualInput.value.trim();
+
+      if (!value) {
+        setStatus("Please enter email or QR value.", "warning");
+        return;
+      }
+
+      saveAttendance(value);
+    }
+
+
+    /****************************************************
+     * SEND TO GOOGLE APPS SCRIPT
+     ****************************************************/
+
+    function saveAttendance(value) {
+      const scannedValue = String(value || "").trim().toLowerCase();
+
+      if (!scannedValue) {
+        setStatus("Invalid QR value.", "error");
+        saving = false;
+        return;
+      }
+
+      if (GAS_WEB_APP_URL.indexOf("PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE") !== -1) {
+        setStatus("Please set your GAS_WEB_APP_URL inside scanner.html.", "error");
+        saving = false;
+        return;
+      }
+
+      setStatus("Saving attendance for " + scannedValue + "...", "info");
+
+      const callbackName = "attendanceCallback_" + Date.now();
+
+      window[callbackName] = function (response) {
+        try {
+          if (response && response.ok) {
+            setStatus(response.message, "success");
+          } else {
+            setStatus(response.message || "Attendance was not recorded.", "warning");
+          }
+        } finally {
+          saving = false;
+          manualInput.value = "";
+
+          const oldScript = document.getElementById(callbackName);
+
+          if (oldScript) {
+            oldScript.remove();
+          }
+
+          delete window[callbackName];
+        }
+      };
+
+      const script = document.createElement("script");
+
+      script.id = callbackName;
+
+      script.src =
+        GAS_WEB_APP_URL +
+        "?action=record" +
+        "&email=" + encodeURIComponent(scannedValue) +
+        "&callback=" + encodeURIComponent(callbackName) +
+        "&t=" + Date.now();
+
+      script.onerror = function () {
+        setStatus("Failed to connect to Google Apps Script Web App.", "error");
+        saving = false;
+        delete window[callbackName];
+      };
+
+      document.body.appendChild(script);
+    }
+
+
+    /****************************************************
+     * AUTO STOP CAMERA WHEN PAGE IS HIDDEN
+     ****************************************************/
+
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden && scanning) {
+        stopScanner();
+      }
+    });
+
+    window.addEventListener("beforeunload", function () {
+      if (scanning) {
+        stopScanner();
+      }
+    });
+  </script>
+</body>
+</html>
